@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow.keras import models
+import numpy as np
 
 from hyperparameters import hps
 
@@ -85,6 +86,7 @@ class Generator(models.Model):
         self._dense = layers.Dense(4 * 4 * 256, use_bias=False)
         self._bn = layers.BatchNormalization()
         self._activation = layers.LeakyReLU(0.2)
+        self._reshape = layers.Reshape((4, 4, 256))
 
         self._upsample1 = UpsampleBlock(128, layers.LeakyReLU(0.2),
                                         strides=(1, 1), use_bias=False,
@@ -104,6 +106,7 @@ class Generator(models.Model):
         x = self._dense(inputs)
         x = self._bn(x)
         x = self._activation(x)
+        x = self._reshape(x)
         x = self._upsample1(x)
         x = self._upsample2(x)
         x = self._upsample3(x)
@@ -122,6 +125,7 @@ class Classiminator(models.Model):
 
         self._flatten = layers.Flatten()
         self._dropout = layers.Dropout(0.2)
+        self._activation = layers.LeakyReLU(0.2)
         self._disc = layers.Dense(1)
         self._classes = layers.Dense(hps.num_classes)
 
@@ -134,7 +138,8 @@ class Classiminator(models.Model):
         x = self._dropout(x)
 
         classes = self._classes(x)
-        disc = self._disc(classes)
+        x = self._activation(classes)
+        disc = self._disc(x)
 
         return disc, classes
 
@@ -194,8 +199,9 @@ class WGCN_GP(models.Model):
 
     def train_step(self, real_data):
         real_images = real_data[0]
+        #print(real_images.shape)
         real_classes = real_data[1]
-        fake_classes = tf.zeros((self.batch_size, self.num_classes), dtype=tf.float32)
+        fake_classes = np.zeros((self.batch_size, self.num_classes), dtype=np.float32)
         fake_classes[:, -1] = 1.0
         return_metrics = {}
         for i in range(self.c_steps):
@@ -210,9 +216,10 @@ class WGCN_GP(models.Model):
                     lambda gen, rv: gen(rv, training=True),
                     self.generators, rvs
                 )
+
                 fake_images = tf.concat(fake_images, axis=0)
-                fake_d, fake_c = self.discriminator(fake_images, training=True)
-                real_d, real_c = self.discriminator(real_images, training=True)
+                fake_d, fake_c = self.classiminator(fake_images, training=True)
+                real_d, real_c = self.classiminator(real_images, training=True)
 
                 d_cost = self.d_loss_fn(real_img=real_d, fake_img=fake_d)
                 c_cost = self.c_loss_fn(real_img=real_c, fake_img=fake_c,
