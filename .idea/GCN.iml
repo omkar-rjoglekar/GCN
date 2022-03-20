@@ -101,6 +101,7 @@
       <excludeFolder url="file://$MODULE_DIR$/gcn/Lib/site-packages/Werkzeug-2.0.3.dist-info" />
       <excludeFolder url="file://$MODULE_DIR$/gcn/Lib/site-packages/wheel-0.37.1.dist-info" />
       <excludeFolder url="file://$MODULE_DIR$/gcn/Include" />
+      <excludeFolder url="file://$MODULE_DIR$/gcn" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.9 (GCN)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
