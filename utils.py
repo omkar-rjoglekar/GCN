@@ -17,7 +17,7 @@ class GCNMonitor(callbacks.Callback):
         for i in range(self.num_imgs):
             img = generated[i]#.numpy()
             img = tf.keras.preprocessing.image.array_to_img(img)
-            filename = "generated_img_gen{gen_num}_{i}_{epoch}.png".format(gen_num=gen_num, i=i, epoch=epoch)
+            filename = "gen{gen_num}/epoch_{epoch}_{i}.png".format(gen_num=gen_num, i=i, epoch=epoch+1)
             filename = os.path.join(self.save_path, filename)
             img.save(filename)
 
@@ -29,14 +29,35 @@ class GCNMonitor(callbacks.Callback):
                 generated_imgs = (generated_imgs * 127.5) + 127.5
                 self.save_imgs(generated_imgs, i, epoch)
 
-def get_dataset():
-    (train_images, train_labels), (_, _) = load_data()
+class GCNCheckpointer(callbacks.Callback):
+    def __init__(self):
+        self.num_gens = hps.num_gens
+        self.save_freq = hps.save_freq
+        self.save_path = hps.savedir
+
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch % self.save_freq == (self.save_freq - 1):
+            print("Epoch number {epoch} saving models to {path}".format(epoch=epoch+1, path=self.save_path))
+            for i in range(self.num_gens):
+                self.model.generators[i].save(self.save_path+"gen"+str(i))
+            self.model.classiminator.save(self.save_path+"classiminator")
+
+            print("Saved models!")
+
+def get_dataset(train=True):
+    (train_images, train_labels), (test_images, test_labels) = load_data()
+    if not train:
+        train_images = test_images
+        train_labels = test_labels
     train_images = (train_images - 127.5) / 127.5
     train_images = tf.image.resize(tf.expand_dims(train_images, -1), hps.img_shape[:2])
     train_labels = tf.one_hot(train_labels, hps.num_classes, 1, 0)
 
     ds = tf.data.Dataset.from_tensor_slices((train_images, train_labels))
-    ds = ds.shuffle(100000, reshuffle_each_iteration=True).batch(hps.batch_size, drop_remainder=True)
+    if train:
+        ds = ds.shuffle(100000, reshuffle_each_iteration=True).batch(hps.batch_size, drop_remainder=True)
+    else:
+        ds = ds.batch(hps.batch_size, drop_remainder=True)
     #print(ds)
 
     return ds

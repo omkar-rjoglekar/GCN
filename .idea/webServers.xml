@@ -3,7 +3,7 @@
   <component name="WebServers">
     <option name="servers">
       <webServer id="aac28d45-2160-459d-af67-0e5fd54fe551" name="omkar@132.66.50.30">
-        <fileTransfer rootFolder="/home/omkar/GCN" accessType="SFTP" host="132.66.50.30" port="22" sshConfigId="4c427f3b-60cc-4370-93f8-a3c0e335fa8c" sshConfig="omkar@132.66.50.30:22 password">
+        <fileTransfer rootFolder="/home/omkar" accessType="SFTP" host="132.66.50.30" port="22" sshConfigId="4c427f3b-60cc-4370-93f8-a3c0e335fa8c" sshConfig="omkar@132.66.50.30:22 password">
           <advancedOptions>
             <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
           </advancedOptions>

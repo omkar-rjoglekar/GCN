@@ -216,8 +216,8 @@ class WGCN_GP(models.Model):
                     lambda gen, rv: gen(rv, training=True),
                     self.generators, rvs
                 )
-
                 fake_images = tf.concat(fake_images, axis=0)
+
                 fake_d, fake_c = self.classiminator(fake_images, training=True)
                 real_d, real_c = self.classiminator(real_images, training=True)
 
@@ -235,9 +235,34 @@ class WGCN_GP(models.Model):
             )
             return_metrics["c_loss"] = total_cost
 
+        """ for i in range(self.num_gens):
+                g_cost = self.gen_train_step(i)
+                return_metrics["g"+str(i)+"_loss"] = g_cost"""
+
+        rvs = tf.random.normal(shape=(self.num_gens*self.batch_size, self.latent_dim))
+        rvs = tf.split(rvs, self.num_gens, axis=0)
+        with tf.GradientTape(persistent=True) as tape:
+            fake_images = tf.nest.map_structure(
+                lambda gen, rv: gen(rv, training=True),
+                self.generators, rvs
+            )
+            fake_images = tf.concat(fake_images, axis=0)
+
+            gen_d, gen_c = self.classiminator(fake_images, training=True)
+            gen_d = tf.split(gen_d, self.num_gens, axis=0)
+            #gen_c = tf.split(gen_c, self.num_gens, axis=0)
+
+            gen_losses = tf.nest.map_structure(
+                lambda discs: self.g_loss_fn(discs, gen_c),
+                gen_d
+            )
+
         for i in range(self.num_gens):
-            g_cost = self.gen_train_step(i)
-            return_metrics["g"+str(i)+"_loss"] = g_cost
+            g_i_grad = tape.gradient(gen_losses[i], self.generators[i].trainable_variables)
+            self.g_opts[i].apply_gradients(
+                zip(g_i_grad, self.generators[i].trainable_variables)
+            )
+            return_metrics["g" + str(i) + "_loss"] = gen_losses[i]
 
         return return_metrics
     

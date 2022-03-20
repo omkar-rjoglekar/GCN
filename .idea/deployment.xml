@@ -5,8 +5,11 @@
       <paths name="omkar@132.66.50.30">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/omkar/GCN" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/GCN" local="$PROJECT_DIR$" web="/" />
           </mappings>
+          <excludedPaths>
+            <excludedPath local="true" path="$PROJECT_DIR$/gcn" />
+          </excludedPaths>
         </serverdata>
       </paths>
     </serverData>
