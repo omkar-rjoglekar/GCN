@@ -5,6 +5,7 @@ import numpy as np
 
 from hyperparameters import hps
 
+
 class ConvBlock(layers.Layer):
     def __init__(self, filters, activation=layers.LeakyReLU(0.2),
                  kernel_size=(5, 5), strides=(2, 2),
@@ -40,6 +41,7 @@ class ConvBlock(layers.Layer):
             x = self._dropout(x)
 
         return x
+
 
 class UpsampleBlock(layers.Layer):
     def __init__(self, filters, activation=layers.LeakyReLU(0.2),
@@ -78,6 +80,7 @@ class UpsampleBlock(layers.Layer):
 
         return x
 
+
 class Generator(models.Model):
     def __init__(self, i):
 
@@ -113,6 +116,7 @@ class Generator(models.Model):
 
         return x
 
+
 class Classiminator(models.Model):
     def __init__(self):
 
@@ -143,16 +147,23 @@ class Classiminator(models.Model):
 
         return disc, classes
 
+
 class WGCN_GP(models.Model):
-    def __init__(self):
+    def __init__(self, from_ckpt=False):
 
         super(WGCN_GP, self).__init__(name='wgcn_gp')
 
         self.classiminator = Classiminator()
+        if from_ckpt:
+            self.classiminator.load_weights(hps.savedir+'classiminator'+".h5")
+
         self.num_gens = hps.num_gens
         self.generators = []
         for i in range(self.num_gens):
             self.generators.append(Generator(i))
+        if from_ckpt:
+            for i in range(self.num_gens):
+                self.generators[i].load_weights(hps.savedir+"gen{}".format(i)+".h5")
 
         self.latent_dim = hps.noise_dim
         self.c_steps = hps.disc_iters_per_gen_iter
@@ -199,7 +210,6 @@ class WGCN_GP(models.Model):
 
     def train_step(self, real_data):
         real_images = real_data[0]
-        #print(real_images.shape)
         real_classes = real_data[1]
         fake_classes = np.zeros((self.batch_size, self.num_classes), dtype=np.float32)
         fake_classes[:, -1] = 1.0
@@ -250,7 +260,6 @@ class WGCN_GP(models.Model):
 
             gen_d, gen_c = self.classiminator(fake_images, training=True)
             gen_d = tf.split(gen_d, self.num_gens, axis=0)
-            #gen_c = tf.split(gen_c, self.num_gens, axis=0)
 
             gen_losses = tf.nest.map_structure(
                 lambda discs: self.g_loss_fn(discs, gen_c),

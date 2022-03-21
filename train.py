@@ -1,11 +1,11 @@
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
 import argparse
-import os
 
 import utils
 import model
 from hyperparameters import hps
+
 
 class Trainer:
     def __init__(self, from_checkpoint=False):
@@ -24,8 +24,7 @@ class Trainer:
         self.gen_diff_loss = tf.keras.losses.KLDivergence()
         self.c_loss_weight = hps.c_loss_weight
 
-        self.gcn = model.WGCN_GP()
-        #self.gcn.build()
+        self.gcn = model.WGCN_GP(from_checkpoint)
 
     def d_loss(self, real_img, fake_img):
         real_loss = tf.reduce_mean(real_img)
@@ -43,7 +42,6 @@ class Trainer:
         d_loss = -tf.reduce_mean(disc)
 
         return d_loss - self.c_loss_weight * c_loss
-
 
     def c_loss(self, real_img, fake_img, real_true, fake_true):
         preds = tf.concat((real_img, fake_img), axis=0)
@@ -63,19 +61,19 @@ class Trainer:
                                           self.checkpointer_cbk],
                                verbose=1)
 
-        self.gcn.classiminator.save(hps.savedir+"classiminator")
+        self.gcn.classiminator.save(hps.savedir+"classiminator"+".h5")
         for i in range(hps.num_gens):
-            self.gcn.generators[i].save(hps.savedir+"gen{}".format(i))
+            self.gcn.generators[i].save_weights(hps.savedir+"gen{}".format(i)+".h5")
 
         return results
 
+
 if __name__ == "__main__":
-    #os.rmdir('./logs')
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--from_checkpoint", "-c", action="store_true",
                         help="to use saved checkpoint to continue training")
     args = parser.parse_args()
-    #print(args.from_checkpoint)
 
     trainer = Trainer(args.from_checkpoint)
     history = trainer.train()

@@ -1,12 +1,10 @@
-from tensorflow.keras.models import load_model
-import numpy as np
 import tensorflow as tf
-from scipy.linalg import sqrtm
 
 import utils
+import model
 from hyperparameters import hps
 
-
+"""
 def calculate_fid(act1, act2):
     # calculate mean and covariance statistics
     mu1, sigma1 = act1.mean(axis=0), np.cov(act1, rowvar=False)
@@ -21,54 +19,63 @@ def calculate_fid(act1, act2):
     # calculate score
     fid = ssdiff + np.trace(sigma1 + sigma2 - 2.0 * covmean)
     return fid
+"""
 
 
 def evaluate():
-    classifier = load_model(hps.savedir + "classiminator")
+    classifier = model.Classiminator()
+    classifier.build((None, 32, 32, 1))
+    classifier.load_weights(hps.savedir + "classiminator" + ".h5")
     real_image_ds = utils.get_dataset(False)
     generators = []
     for i in range(hps.num_gens):
-        generators.append(load_model(hps.savedir + "gen{}".format(i)))
+        gen = model.Generator(i)
+        gen.build((None, hps.noise_dim))
+        gen.load_weights(hps.savedir + "gen{}".format(i)+".h5")
+        generators.append(gen)
 
-    distance_01 = tf.keras.metrics.KLDivergence()
-    distance_10 = tf.keras.metrics.KLDivergence()
-    fid_real0 = []
-    fid_real1 = []
-    fid_real = []
+    distance = utils.JSDivergence()
+    jsd_real0 = utils.JSDivergence()
+    jsd_real1 = utils.JSDivergence()
+    jsd_real = utils.JSDivergence()
     for (real_batch, _) in real_image_ds:
-        #print(real_batch)
         _, real_logits = classifier.predict(real_batch)
+        real_dist = tf.nn.softmax(real_logits)
 
-        rvs = tf.random.normal(shape=(hps.num_gens * hps.batch_size, hps.noise_dim))
+        rvs = tf.random.normal(shape=(hps.num_gens*hps.batch_size, hps.noise_dim))
         rvs = tf.split(rvs, hps.num_gens, axis=0)
         fake_images = tf.nest.map_structure(
-            lambda rv, gen: gen.predict(rv),
+            lambda rv, gen_i: gen_i.predict(rv),
             rvs, generators
         )
         fake_images = tf.concat(fake_images, axis=0)
         _, fake_logits = classifier.predict(fake_images)
-        real_fid = calculate_fid(real_logits, fake_logits)
-        fake_logits = tf.split(fake_logits, hps.num_gens, axis=0)
+        fake_dist = tf.nn.softmax(fake_logits)
+        fake_dist = tf.split(fake_dist, hps.num_gens, axis=0)
 
-        real_fid0 = calculate_fid(real_logits, fake_logits[0].numpy())
-        real_fid1 = calculate_fid(real_logits, fake_logits[1].numpy())
+        distance.update_state(fake_dist[1], fake_dist[0])
+        jsd_real0.update_state(fake_dist[0], real_dist)
+        jsd_real1.update_state(fake_dist[1], real_dist)
 
-        fake_dist0 = tf.nn.softmax(fake_logits[0])
-        fake_dist1 = tf.nn.softmax(fake_logits[1])
+        rvs = tf.random.normal(shape=(hps.batch_size, hps.noise_dim))
+        rvs = tf.split(rvs, hps.num_gens, axis=0)
+        fake_images = tf.nest.map_structure(
+            lambda rv, gen_i: gen_i.predict(rv),
+            rvs, generators
+        )
+        fake_images = tf.concat(fake_images, axis=0)
+        _, fake_logits = classifier.predict(fake_images)
+        fake_dist = tf.nn.softmax(fake_logits)
 
-        fid_real0.append(real_fid0)
-        fid_real1.append(real_fid1)
-        fid_real.append(real_fid)
+        jsd_real.update_state(fake_dist, real_dist)
 
-        distance_10.update_state(fake_dist1, fake_dist0)
-        distance_01.update_state(fake_dist0, fake_dist1)
+    return distance.result(), jsd_real0.result(), jsd_real1.result(), jsd_real.result()
 
-    return 0.5 * (distance_01.result() + distance_10.result()), np.mean(fid_real0), np.mean(fid_real1), np.mean(fid_real)
 
 if __name__ == "__main__":
     cross, real0, real1, real = evaluate()
     print("Mean FID values:\n")
     print("Cross JSD = {}".format(cross))
-    print("Real and Gen FID = {}".format(real))
-    print("Real and Gen 0 FID = {}".format(real0))
-    print("Real and Gen 1 FID = {}".format(real1))
+    print("Real and Gen JSD = {}".format(real))
+    print("Real and Gen 0 JSD = {}".format(real0))
+    print("Real and Gen 1 JSD = {}".format(real1))
