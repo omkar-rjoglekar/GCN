@@ -13,13 +13,14 @@ class GCNMonitor(callbacks.Callback):
         self.num_gens = hps.num_gens
         self.save_freq = hps.save_freq
         self.save_path = hps.gen_img_dir
+        self.expt = hps.experiment_name
 
     def save_imgs(self, generated, gen_num, epoch):
         for i in range(self.num_imgs):
             img = generated[i]
             img = tf.keras.preprocessing.image.array_to_img(img)
             filename = "gen{gen_num}/epoch_{epoch}_{i}.png".format(gen_num=gen_num, i=i, epoch=epoch+1)
-            filename = os.path.join(self.save_path, filename)
+            filename = self.expt + self.save_path + filename
             img.save(filename)
 
     def on_epoch_end(self, epoch, logs=None):
@@ -41,8 +42,8 @@ class GCNCheckpointer(callbacks.Callback):
         if epoch % self.save_freq == (self.save_freq - 1):
             print("\nEpoch number {epoch} saving models to {path}".format(epoch=epoch+1, path=self.save_path))
             for i in range(self.num_gens):
-                self.model.generators[i].save_weights(self.save_path+"gen"+str(i)+".h5")
-            self.model.classiminator.save_weights(self.save_path+"classiminator"+".h5")
+                self.model.generators[i].save_weights(hps.experiment_name+self.save_path+"gen"+str(i)+".h5")
+            self.model.classiminator.save_weights(hps.experiment_name+self.save_path+"classiminator"+".h5")
 
             print("Saved models!")
 

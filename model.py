@@ -155,7 +155,7 @@ class WGCN_GP(models.Model):
 
         self.classiminator = Classiminator()
         if from_ckpt:
-            self.classiminator.load_weights(hps.savedir+'classiminator'+".h5")
+            self.classiminator.load_weights(hps.experiment_name+hps.savedir+'classiminator'+".h5")
 
         self.num_gens = hps.num_gens
         self.generators = []
@@ -163,7 +163,7 @@ class WGCN_GP(models.Model):
             self.generators.append(Generator(i))
         if from_ckpt:
             for i in range(self.num_gens):
-                self.generators[i].load_weights(hps.savedir+"gen{}".format(i)+".h5")
+                self.generators[i].load_weights(hps.experiment_name+hps.savedir+"gen{}".format(i)+".h5")
 
         self.latent_dim = hps.noise_dim
         self.c_steps = hps.disc_iters_per_gen_iter
@@ -237,7 +237,7 @@ class WGCN_GP(models.Model):
                                         fake_true=fake_classes)
                 gp = self.gradient_penalty(real_images, fake_images)
 
-                total_cost = c_cost + d_cost + gp * self.gp_weight
+                total_cost = d_cost + gp * self.gp_weight
 
             c_grads = tape.gradient(total_cost, self.classiminator.trainable_variables)
             self.c_opt.apply_gradients(
