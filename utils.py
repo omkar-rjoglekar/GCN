@@ -1,7 +1,6 @@
 from tensorflow.keras import callbacks, metrics
 from tensorflow.keras.datasets.mnist import load_data
 import tensorflow as tf
-import os
 
 from hyperparameters import hps
 
@@ -20,7 +19,7 @@ class GCNMonitor(callbacks.Callback):
             img = generated[i]
             img = tf.keras.preprocessing.image.array_to_img(img)
             filename = "gen{gen_num}/epoch_{epoch}_{i}.png".format(gen_num=gen_num, i=i, epoch=epoch+1)
-            filename = self.expt + self.save_path + filename
+            filename = self.save_path + filename
             img.save(filename)
 
     def on_epoch_end(self, epoch, logs=None):
@@ -42,8 +41,9 @@ class GCNCheckpointer(callbacks.Callback):
         if epoch % self.save_freq == (self.save_freq - 1):
             print("\nEpoch number {epoch} saving models to {path}".format(epoch=epoch+1, path=self.save_path))
             for i in range(self.num_gens):
-                self.model.generators[i].save_weights(hps.experiment_name+self.save_path+"gen"+str(i)+".h5")
-            self.model.classiminator.save_weights(hps.experiment_name+self.save_path+"classiminator"+".h5")
+                self.model.generators[i].save_weights(self.save_path+"gen"+str(i)+".h5")
+            self.model.discriminator.save_weights(self.save_path + "discriminator" + ".h5")
+            self.model.classifier.save_weights(self.save_path + "classifier" + ".h5")
 
             print("Saved models!")
 

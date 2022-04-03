@@ -10,8 +10,8 @@ class ConvBlock(layers.Layer):
     def __init__(self, filters, activation=layers.LeakyReLU(0.2),
                  kernel_size=(5, 5), strides=(2, 2),
                  padding="same", use_bias=True,
-                 use_bn=False, use_dropout=False,
-                 drop_value=0.3):
+                 use_ln=False, use_dropout=False,
+                 use_bn=False, drop_value=0.3):
 
         super(ConvBlock, self).__init__()
 
@@ -20,7 +20,9 @@ class ConvBlock(layers.Layer):
             padding=padding, use_bias=use_bias
         )
 
-        if use_bn:
+        if use_ln:
+            self._bn = layers.LayerNormalization()
+        elif use_bn:
             self._bn = layers.BatchNormalization()
         else:
             self._bn = None
@@ -117,21 +119,19 @@ class Generator(models.Model):
         return x
 
 
-class Classiminator(models.Model):
+class Discriminator(models.Model):
     def __init__(self):
 
-        super(Classiminator, self).__init__(name="classiminator")
+        super(Discriminator, self).__init__(name="discriminator")
 
         self._conv_block1 = ConvBlock(64)
-        self._conv_block2 = ConvBlock(128, use_dropout=True)
-        self._conv_block3 = ConvBlock(256, use_dropout=True)
+        self._conv_block2 = ConvBlock(128, use_ln=True, use_dropout=True)
+        self._conv_block3 = ConvBlock(256, use_ln=True, use_dropout=True)
         self._conv_block4 = ConvBlock(512)
 
         self._flatten = layers.Flatten()
         self._dropout = layers.Dropout(0.2)
-        self._activation = layers.LeakyReLU(0.2)
         self._disc = layers.Dense(1)
-        self._classes = layers.Dense(hps.num_classes)
 
     def call(self, inputs):
         x = self._conv_block1(inputs)
@@ -141,11 +141,51 @@ class Classiminator(models.Model):
         x = self._flatten(x)
         x = self._dropout(x)
 
-        classes = self._classes(x)
-        x = self._activation(classes)
         disc = self._disc(x)
 
-        return disc, classes
+        return disc
+
+class MLP(layers.Layer):
+    def __init__(self, layer_sizes=hps.classifier_mlp+[hps.num_classes]):
+        super(MLP, self).__init__(name='MLP')
+
+        self._layers = []
+        for i in range(len(layer_sizes) - 1):
+            self._layers.append(layers.Dense(layer_sizes[i], activation='relu'))
+        self._layers.append(layers.Dense(layer_sizes[-1]))
+
+    def call(self, inputs):
+        x = inputs
+        for i in range(len(self._layers)):
+            x = self._layers[i](x)
+
+        return x
+
+class Classifier(models.Model):
+    def __init__(self):
+
+        super(Classifier, self).__init__(name="classifier")
+
+        self._conv_block1 = ConvBlock(64)
+        self._conv_block2 = ConvBlock(128, use_bn=True, use_dropout=True)
+        self._conv_block3 = ConvBlock(256, use_bn=True, use_dropout=True)
+        self._conv_block4 = ConvBlock(512)
+
+        self._flatten = layers.Flatten()
+        self._dropout = layers.Dropout(0.2)
+        self._class = MLP()
+
+    def call(self, inputs):
+        x = self._conv_block1(inputs)
+        x = self._conv_block2(x)
+        x = self._conv_block3(x)
+        x = self._conv_block4(x)
+        x = self._flatten(x)
+        x = self._dropout(x)
+
+        classes = self._class(x)
+
+        return classes
 
 
 class WGCN_GP(models.Model):
@@ -153,17 +193,30 @@ class WGCN_GP(models.Model):
 
         super(WGCN_GP, self).__init__(name='wgcn_gp')
 
-        self.classiminator = Classiminator()
+        self.d_loss = tf.keras.metrics.Mean(name="d_loss")
+        self.c_loss = tf.keras.metrics.Mean(name="c_loss")
+        self.c_accuracy = tf.keras.metrics.CategoricalAccuracy(name="c_acc")
+        self.g_losses = []
+
+        self.discriminator = Discriminator()
         if from_ckpt:
-            self.classiminator.load_weights(hps.experiment_name+hps.savedir+'classiminator'+".h5")
+            self.discriminator.build(shape=(None)+hps.img_shape)
+            self.discriminator.load_weights(hps.savedir + 'discriminator' + ".h5")
 
         self.num_gens = hps.num_gens
         self.generators = []
         for i in range(self.num_gens):
             self.generators.append(Generator(i))
+            self.g_losses.append(tf.keras.metrics.Mean(name="g"+str(i)+"_loss"))
         if from_ckpt:
             for i in range(self.num_gens):
-                self.generators[i].load_weights(hps.experiment_name+hps.savedir+"gen{}".format(i)+".h5")
+                self.generators[i].build(shape=(None, hps.noise_dim))
+                self.generators[i].load_weights(hps.savedir + "gen{}".format(i) + ".h5")
+
+        self.classifier = Classifier()
+        if from_ckpt:
+            self.classifier.build(shape=(None)+hps.img_shape)
+            self.classifier.load_weights(hps.savedir + 'classifier' + ".h5")
 
         self.latent_dim = hps.noise_dim
         self.c_steps = hps.disc_iters_per_gen_iter
@@ -171,13 +224,14 @@ class WGCN_GP(models.Model):
         self.batch_size = hps.batch_size
         self.num_classes = hps.num_classes
 
-    def compile(self, c_optimizer, g_optimizers, d_loss_fn, c_loss_fn, g_loss_fn):
+    def compile(self, d_optimizer, g_optimizers, c_optimizer, d_loss_fn, g_loss_fn):
         super(WGCN_GP, self).compile()
-        self.c_opt = c_optimizer
+        self.d_opt = d_optimizer
         self.g_opts = g_optimizers
         self.d_loss_fn = d_loss_fn
-        self.c_loss_fn = c_loss_fn
         self.g_loss_fn = g_loss_fn
+        self.classifier.compile(optimizer=c_optimizer,
+                                loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True))
 
     def gradient_penalty(self, real_images, fake_images):
         alpha = tf.random.normal([self.batch_size, 1, 1, 1], 0.0, 1.0)
@@ -186,7 +240,7 @@ class WGCN_GP(models.Model):
 
         with tf.GradientTape() as gp_tape:
             gp_tape.watch(interpolated)
-            pred, _ = self.classiminator(interpolated, training=True)
+            pred = self.discriminator(interpolated, training=True)
 
         grads = gp_tape.gradient(pred, [interpolated])[0]
         norm = tf.sqrt(tf.reduce_sum(tf.square(grads), axis=[1, 2, 3]))
@@ -194,23 +248,9 @@ class WGCN_GP(models.Model):
 
         return gp
 
-    def gen_train_step(self, gen_num):
-        random_latent_vectors = tf.random.normal(shape=(self.batch_size, self.latent_dim))
-
-        with tf.GradientTape() as tape:
-            generated_images = self.generators[gen_num](random_latent_vectors, training=True)
-            gen_img_logits, _ = self.classiminator(generated_images, training=True)
-            g_cost = self.g_loss_fn(gen_img_logits)
-        gen_gradient = tape.gradient(g_cost, self.generators[gen_num].trainable_variables)
-        self.g_opts[gen_num].apply_gradients(
-            zip(gen_gradient, self.generators[gen_num].trainable_variables)
-        )
-
-        return g_cost
-
     def train_step(self, real_data):
         real_images = real_data[0]
-        real_classes = real_data[1]
+        real_labels = real_data[1]
         fake_classes = np.zeros((self.batch_size, self.num_classes), dtype=np.float32)
         fake_classes[:, -1] = 1.0
         return_metrics = {}
@@ -228,26 +268,34 @@ class WGCN_GP(models.Model):
                 )
                 fake_images = tf.concat(fake_images, axis=0)
 
-                fake_d, fake_c = self.classiminator(fake_images, training=True)
-                real_d, real_c = self.classiminator(real_images, training=True)
+                fake_d = self.discriminator(fake_images, training=True)
+                real_d = self.discriminator(real_images, training=True)
 
                 d_cost = self.d_loss_fn(real_img=real_d, fake_img=fake_d)
-                c_cost = self.c_loss_fn(real_img=real_c, fake_img=fake_c,
-                                        real_true=real_classes,
-                                        fake_true=fake_classes)
                 gp = self.gradient_penalty(real_images, fake_images)
 
                 total_cost = d_cost + gp * self.gp_weight
 
-            c_grads = tape.gradient(total_cost, self.classiminator.trainable_variables)
-            self.c_opt.apply_gradients(
-                zip(c_grads, self.classiminator.trainable_variables)
+            c_grads = tape.gradient(total_cost, self.discriminator.trainable_variables)
+            self.d_opt.apply_gradients(
+                zip(c_grads, self.discriminator.trainable_variables)
             )
-            return_metrics["c_loss"] = total_cost
+            self.d_loss.update_state(total_cost)
 
-        """ for i in range(self.num_gens):
-                g_cost = self.gen_train_step(i)
-                return_metrics["g"+str(i)+"_loss"] = g_cost"""
+        return_metrics["d_loss"] = self.d_loss.result()
+
+        with tf.GradientTape() as tape:
+            preds = self.classifier(real_images, training=True)
+            loss = self.classifier.compiled_loss(real_labels, preds, regularization_losses=self.losses)
+
+        grads = tape.gradient(loss, self.classifier.trainable_variables)
+        self.classifier.optimizer.apply_gradients(
+            zip(grads, self.classifier.trainable_variables)
+        )
+        self.c_loss.update_state(loss)
+        self.c_accuracy.update_state(real_labels, preds)
+        return_metrics["c_loss"] = self.c_loss.result()
+        return_metrics["c_acc"] = self.c_accuracy.result()
 
         rvs = tf.random.normal(shape=(self.num_gens*self.batch_size, self.latent_dim))
         rvs = tf.split(rvs, self.num_gens, axis=0)
@@ -258,11 +306,11 @@ class WGCN_GP(models.Model):
             )
             fake_images = tf.concat(fake_images, axis=0)
 
-            gen_d, gen_c = self.classiminator(fake_images, training=True)
+            gen_d = self.discriminator(fake_images, training=True)
             gen_d = tf.split(gen_d, self.num_gens, axis=0)
 
             gen_losses = tf.nest.map_structure(
-                lambda discs: self.g_loss_fn(discs, gen_c),
+                lambda discs: self.g_loss_fn(discs),
                 gen_d
             )
 
@@ -271,7 +319,13 @@ class WGCN_GP(models.Model):
             self.g_opts[i].apply_gradients(
                 zip(g_i_grad, self.generators[i].trainable_variables)
             )
-            return_metrics["g" + str(i) + "_loss"] = gen_losses[i]
+            self.g_losses[i].update_state(gen_losses[i])
+            return_metrics["g" + str(i) + "_loss"] = self.g_losses[i].result()
 
         return return_metrics
+
+    @property
+    def metrics(self):
+        return [self.d_loss, self.c_loss, self.c_accuracy] + self.g_losses
+
     
