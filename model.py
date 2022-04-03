@@ -327,5 +327,3 @@ class WGCN_GP(models.Model):
     @property
     def metrics(self):
         return [self.d_loss, self.c_loss, self.c_accuracy] + self.g_losses
-
-    
