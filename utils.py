@@ -66,20 +66,23 @@ def get_dataset(train=True):
     return ds
 
 
-class JSDivergence(metrics.Metric):
-    def __init__(self, name="js_divergence", **kwargs):
-        super(JSDivergence, self).__init__(name=name, **kwargs)
+class TVDistance(metrics.Metric):
+    def __init__(self, name="tv_distance", **kwargs):
+        super(TVDistance, self).__init__(name=name, **kwargs)
 
-        self.kld10 = metrics.KLDivergence()
-        self.kld01 = metrics.KLDivergence()
+        self.batch_metrics = tf.TensorArray(tf.float32, size=0, dynamic_size=True, clear_after_read=False)
+        self.pointer = 0
 
     def update_state(self, y0, y1, sample_weight=None):
-        self.kld01.update_state(y0, y1)
-        self.kld10.update_state(y1, y0)
+        tvd = tf.reduce_mean(0.5*tf.reduce_sum(tf.math.abs(y0 - y1), axis=-1))
+        self.batch_metrics = self.batch_metrics.write(self.pointer, tvd)
+        self.pointer += 1
 
     def result(self):
-        return 0.5 * (self.kld10.result() + self.kld01.result())
+        metrics_tensor = self.batch_metrics.stack()
+        return tf.reduce_mean(metrics_tensor)
 
     def reset_state(self):
-        self.kld01.reset_state()
-        self.kld10.reset_state()
+        self.batch_metrics.close()
+        self.batch_metrics = tf.TensorArray(tf.float32, size=0, dynamic_size=True, clear_after_read=False)
+        self.pointer = 0

@@ -26,7 +26,7 @@ def calculate_fid(act1, act2):
 def evaluate(c_model, g_models):
     real_image_ds = utils.get_dataset(False)
 
-    distance = utils.JSDivergence()
+    distance = utils.TVDistance()
     fid = tf.keras.metrics.Mean()
     for (real_imgs, _) in real_image_ds:
         real_logits = c_model.predict(real_imgs)
