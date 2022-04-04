@@ -1,6 +1,10 @@
 from tensorflow.keras import callbacks, metrics
 from tensorflow.keras.datasets.mnist import load_data
 import tensorflow as tf
+from tensorflow.keras.applications.inception_v3 import InceptionV3, preprocess_input
+
+import numpy as np
+from scipy.linalg import sqrtm
 
 from hyperparameters import hps
 
@@ -76,6 +80,53 @@ class TVDistance(metrics.Metric):
     def update_state(self, y0, y1, sample_weight=None):
         tvd = tf.reduce_mean(0.5*tf.reduce_sum(tf.math.abs(y0 - y1), axis=-1))
         self.batch_metrics = self.batch_metrics.write(self.pointer, tvd)
+        self.pointer += 1
+
+    def result(self):
+        metrics_tensor = self.batch_metrics.stack()
+        return tf.reduce_mean(metrics_tensor)
+
+    def reset_state(self):
+        self.batch_metrics.close()
+        self.batch_metrics = tf.TensorArray(tf.float32, size=0, dynamic_size=True, clear_after_read=False)
+        self.pointer = 0
+
+class FIDistance(metrics.Metric):
+    def __init__(self, name='fid', **kwargs):
+        super(FIDistance, self).__init__(name=name, **kwargs)
+
+        self.target_shape = (299, 299, 3)
+        self.inception_net = InceptionV3(include_top=False, pooling='avg', input_shape=self.target_shape)
+        self.batch_metrics = tf.TensorArray(tf.float32, size=0, dynamic_size=True, clear_after_read=False)
+        self.pointer = 0
+
+    def scale_images(self, imgs):
+        if imgs.shape[-1] == 1:
+            imgs = tf.concat((imgs, imgs, imgs), axis=-1)
+        return tf.image.resize(imgs, self.target_shape[:2])
+
+    def calculate_fid(self, real, fake):
+        real = self.inception_net.predict(real)
+        fake = self.inception_net.predict(fake)
+        mu1, sigma1 = real.mean(axis=0), np.cov(real, rowvar=0)
+        mu2, sigma2 = fake.mean(axis=0), np.cov(fake, rowvar=0)
+
+        ssdiff = np.sum((mu1 - mu2) ** 2.0)
+        covmean = sqrtm(sigma1.dot(sigma2))
+        if np.iscomplexobj(covmean):
+            covmean = covmean.real
+
+        fid = ssdiff + np.trace(sigma1 + sigma2 - 2.0 * covmean)
+
+        return fid
+
+    def update_state(self, real, fake, sample_weight=None):
+        real = preprocess_input(self.scale_images(real))
+        fake = preprocess_input(self.scale_images(fake))
+
+        fid = self.calculate_fid(real, fake)
+
+        self.batch_metrics = self.batch_metrics.write(self.pointer, fid)
         self.pointer += 1
 
     def result(self):
