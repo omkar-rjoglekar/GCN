@@ -10,7 +10,6 @@ from hyperparameters import hps
 class Trainer:
     def __init__(self, from_checkpoint=False):
         self.d_opt = Adam(hps.disc_lr, hps.beta_1, hps.beta_2)
-        self.c_opt = Adam(hps.class_lr)
         self.g_opts = []
         for i in range(hps.num_gens):
             self.g_opts.append(Adam(hps.gen_lr, hps.beta_1, hps.beta_2))
@@ -34,7 +33,7 @@ class Trainer:
         return d_loss
 
     def train(self):
-        self.gcn.compile(self.d_opt, self.g_opts, self.c_opt, self.d_loss, self.g_loss)
+        self.gcn.compile(self.d_opt, self.g_opts, self.d_loss, self.g_loss)
 
         results = self.gcn.fit(self.real_dataset,
                                epochs=self.num_epochs,
