@@ -21,6 +21,7 @@ class Trainer:
         self.tensorboard_cbk = tf.keras.callbacks.TensorBoard(hps.logdir)
 
         self.num_epochs = hps.epochs
+        self.c_loss_wt = hps.c_loss_weight
 
         self.gcn = model.WGCN_GP(from_checkpoint)
 
@@ -29,9 +30,24 @@ class Trainer:
         fake_loss = tf.reduce_mean(fake_img)
         return fake_loss - real_loss
 
-    def g_loss(self, disc):
+    def tvd_loss(self, cls_lst):
+        if len(cls_lst) == 2:
+            tvd = tf.reduce_mean(0.5*tf.reduce_sum(tf.math.abs(cls_lst[0] - cls_lst[1]), axis=-1))
+            return tvd
+
+        tvd = tf.constant(0.0)
+        ctr = tf.constant(0.0)
+        for i in range(len(cls_lst)):
+            for j in range(i+1, len(cls_lst)):
+                tvd += tf.reduce_mean(0.5*tf.reduce_sum(tf.math.abs(cls_lst[i] - cls_lst[j]), axis=-1))
+                ctr += 1.0
+
+        return tvd/ctr
+
+    def g_loss(self, disc, cls):
         d_loss = -tf.reduce_mean(disc)
-        return d_loss
+        c_loss = self.tvd_loss(cls)
+        return d_loss - self.c_loss_wt*c_loss
 
     def train(self):
         self.gcn.compile(self.d_opt, self.g_opts, self.c_opt, self.d_loss, self.g_loss)

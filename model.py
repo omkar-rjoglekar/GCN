@@ -307,10 +307,13 @@ class WGCN_GP(models.Model):
             fake_images = tf.concat(fake_images, axis=0)
 
             gen_d = self.discriminator(fake_images, training=True)
+            gen_c = self.classifier(fake_images, training=True)
+            gen_c = tf.nn.softmax(gen_c)
             gen_d = tf.split(gen_d, self.num_gens, axis=0)
+            gen_c = tf.split(gen_c, self.num_gens, axis=0)
 
             gen_losses = tf.nest.map_structure(
-                lambda discs: self.g_loss_fn(discs),
+                lambda discs: self.g_loss_fn(discs, gen_c),
                 gen_d
             )
 
