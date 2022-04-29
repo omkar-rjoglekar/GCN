@@ -84,7 +84,7 @@ class UpsampleBlock(layers.Layer):
 
 
 class Generator(models.Model):
-    def __init__(self, i):
+    def __init__(self, i, use_cropping=False):
 
         super(Generator, self).__init__(name="generator_"+str(i))
 
@@ -107,6 +107,10 @@ class Generator(models.Model):
                                         strides=(1, 1), use_bias=False,
                                         use_bn=True)
 
+        self.use_cropping = use_cropping
+        if self.use_cropping:
+            self.crop = layers.Cropping2D((2, 2))
+
     def call(self, inputs):
         x = self._dense(inputs)
         x = self._bn(x)
@@ -115,6 +119,9 @@ class Generator(models.Model):
         x = self._upsample1(x)
         x = self._upsample2(x)
         x = self._upsample3(x)
+
+        if self.use_cropping:
+            x = self.crop(x)
 
         return x
 
