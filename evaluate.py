@@ -5,12 +5,12 @@ import utils
 import model
 from hyperparameters import hps
 
+from tensorflow_gan.examples.mnist import util as eval_util
 
-def evaluate(c_model, g_models):
+def evaluate_distance(c_model, g_models):
     real_image_ds = utils.get_dataset(False)
 
     distance = utils.TVDistance()
-    fid = utils.FIDistance()
     for (real_imgs, _) in real_image_ds:
 
         rvs = tf.random.normal(shape=(hps.batch_size, hps.noise_dim))
@@ -24,14 +24,13 @@ def evaluate(c_model, g_models):
         fake_dists = tf.nn.softmax(fake_logits)
         fake_dists_list = tf.split(fake_dists, hps.num_gens, axis=0)
 
-        fid.update_state(real_imgs, fake_images)
 
         for i in range(hps.num_gens):
             for j in range(i, hps.num_gens):
                 if j != i:
                     distance.update_state(fake_dists_list[i], fake_dists_list[j])
 
-    return fid.result(), distance.result()
+    return distance.result()
 
 
 def save_im(g_models):
@@ -71,6 +70,25 @@ def average_class_probs(g_models, c_model):
 
     return classes
 
+def get_fid(gen_lst):
+    (_, _), (real_imgs, labels) = tf.keras.datasets.mnist.load_data()
+    real_imgs = (real_imgs - 127.5) / 127.5
+    real_imgs = tf.expand_dims(real_imgs, -1)
+    real_imgs = tf.cast(real_imgs, tf.float32)
+
+    rvs = tf.random.normal(shape=(real_imgs.shape[0], hps.noise_dim))
+    rvs = tf.split(rvs, hps.num_gens, axis=0)
+
+    fake_imgs = tf.nest.map_structure(
+        lambda rv, gen_i: gen_i.predict(rv),
+        rvs, gen_lst
+    )
+    fake_imgs = tf.cast(tf.concat(fake_imgs, axis=0), tf.float32)
+
+    fid = eval_util.mnist_frechet_distance(real_imgs, fake_imgs)
+
+    return fid
+
 if __name__ == "__main__":
     np.set_printoptions(suppress=True)
     tf.keras.backend.clear_session()
@@ -86,8 +104,16 @@ if __name__ == "__main__":
         gen.load_weights(hps.savedir + "gen{}".format(i) + ".h5")
         generators.append(gen)
 
-    FID, dist = evaluate(classifier, generators)
+    dist = evaluate_distance(classifier, generators)
     save_im(generators)
+
+    generators = []
+    for i in range(hps.num_gens):
+        gen = model.Generator(i, True)
+        gen.build((None, hps.noise_dim))
+        gen.load_weights(hps.savedir + "gen{}".format(i) + ".h5")
+        generators.append(gen)
+    FID = get_fid(generators)
 
     print("Generator mean FID = {}".format(FID))
     print("Generators' image distance = {}".format(dist) + " (TVD)")
