@@ -207,7 +207,7 @@ class WGCN_GP(models.Model):
 
         self.discriminator = Discriminator()
         if from_ckpt:
-            self.discriminator.build(shape=(None)+hps.img_shape)
+            self.discriminator.build(input_shape=(None, 32, 32, 1))
             self.discriminator.load_weights(hps.savedir + 'discriminator' + ".h5")
 
         self.num_gens = hps.num_gens
@@ -217,12 +217,12 @@ class WGCN_GP(models.Model):
             self.g_losses.append(tf.keras.metrics.Mean(name="g"+str(i)+"_loss"))
         if from_ckpt:
             for i in range(self.num_gens):
-                self.generators[i].build(shape=(None, hps.noise_dim))
+                self.generators[i].build(input_shape=(None, hps.noise_dim))
                 self.generators[i].load_weights(hps.savedir + "gen{}".format(i) + ".h5")
 
         self.classifier = Classifier()
         if from_ckpt:
-            self.classifier.build(shape=(None)+hps.img_shape)
+            self.classifier.build(input_shape=(None, 32, 32, 1))
             self.classifier.load_weights(hps.savedir + 'classifier' + ".h5")
 
         self.latent_dim = hps.noise_dim
