@@ -10,7 +10,6 @@ from hyperparameters import hps
 class Trainer:
     def __init__(self, from_checkpoint=False):
         self.d_opt = Adam(hps.disc_lr, hps.beta_1, hps.beta_2)
-        self.c_opt = Adam(hps.class_lr)
         self.g_opts = []
         for i in range(hps.num_gens):
             self.g_opts.append(Adam(hps.gen_lr, hps.beta_1, hps.beta_2))
@@ -47,10 +46,11 @@ class Trainer:
     def g_loss(self, disc, cls):
         d_loss = -tf.reduce_mean(disc)
         c_loss = self.tvd_loss(cls)
-        return d_loss - self.c_loss_wt*c_loss
+        c_loss = -self.c_loss_wt*c_loss
+        return d_loss + c_loss, d_loss/c_loss
 
     def train(self):
-        self.gcn.compile(self.d_opt, self.g_opts, self.c_opt, self.d_loss, self.g_loss)
+        self.gcn.compile(self.d_opt, self.g_opts, self.d_loss, self.g_loss)
 
         results = self.gcn.fit(self.real_dataset,
                                epochs=self.num_epochs,
@@ -60,7 +60,7 @@ class Trainer:
                                verbose=1)
 
         self.gcn.discriminator.save_weights(hps.savedir + "discriminator" + ".h5")
-        self.gcn.classifier.save_weights(hps.savedir + "classifier" + ".h5")
+        #self.gcn.classifier.save_weights(hps.savedir + "classifier" + ".h5")
         for i in range(hps.num_gens):
             self.gcn.generators[i].save_weights(hps.savedir+"gen{}".format(i)+".h5")
 

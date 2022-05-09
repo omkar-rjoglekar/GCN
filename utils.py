@@ -1,10 +1,6 @@
 from tensorflow.keras import callbacks, metrics
 from tensorflow.keras.datasets.mnist import load_data
 import tensorflow as tf
-from tensorflow.keras.applications.inception_v3 import InceptionV3, preprocess_input
-
-import numpy as np
-from scipy.linalg import sqrtm
 
 from hyperparameters import hps
 
@@ -47,7 +43,7 @@ class GCNCheckpointer(callbacks.Callback):
             for i in range(self.num_gens):
                 self.model.generators[i].save_weights(self.save_path+"gen"+str(i)+".h5")
             self.model.discriminator.save_weights(self.save_path + "discriminator" + ".h5")
-            self.model.classifier.save_weights(self.save_path + "classifier" + ".h5")
+            #self.model.classifier.save_weights(self.save_path + "classifier" + ".h5")
 
             print("Saved models!")
 

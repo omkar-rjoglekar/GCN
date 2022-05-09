@@ -201,8 +201,9 @@ class WGCN_GP(models.Model):
         super(WGCN_GP, self).__init__(name='wgcn_gp')
 
         self.d_loss = tf.keras.metrics.Mean(name="d_loss")
-        self.c_loss = tf.keras.metrics.Mean(name="c_loss")
-        self.c_accuracy = tf.keras.metrics.CategoricalAccuracy(name="c_acc")
+        self.tvd_gp_ratio = tf.keras.metrics.Mean(name="tvd_gp_ratio")
+        #self.c_loss = tf.keras.metrics.Mean(name="c_loss")
+        #self.c_accuracy = tf.keras.metrics.CategoricalAccuracy(name="c_acc")
         self.g_losses = []
 
         self.discriminator = Discriminator()
@@ -230,14 +231,12 @@ class WGCN_GP(models.Model):
         self.batch_size = hps.batch_size
         self.num_classes = hps.num_classes
 
-    def compile(self, d_optimizer, g_optimizers, c_optimizer, d_loss_fn, g_loss_fn):
+    def compile(self, d_optimizer, g_optimizers, d_loss_fn, g_loss_fn):
         super(WGCN_GP, self).compile()
         self.d_opt = d_optimizer
         self.g_opts = g_optimizers
         self.d_loss_fn = d_loss_fn
         self.g_loss_fn = g_loss_fn
-        self.classifier.compile(optimizer=c_optimizer,
-                                loss=tf.keras.losses.CategoricalCrossentropy(from_logits=True))
 
     def gradient_penalty(self, real_images, fake_images):
         alpha = tf.random.normal([self.batch_size, 1, 1, 1], 0.0, 1.0)
@@ -256,7 +255,6 @@ class WGCN_GP(models.Model):
 
     def train_step(self, real_data):
         real_images = real_data[0]
-        real_labels = real_data[1]
         fake_classes = np.zeros((self.batch_size, self.num_classes), dtype=np.float32)
         fake_classes[:, -1] = 1.0
         return_metrics = {}
@@ -290,19 +288,6 @@ class WGCN_GP(models.Model):
 
         return_metrics["d_loss"] = self.d_loss.result()
 
-        with tf.GradientTape() as tape:
-            preds = self.classifier(real_images, training=True)
-            loss = self.classifier.compiled_loss(real_labels, preds, regularization_losses=self.losses)
-
-        grads = tape.gradient(loss, self.classifier.trainable_variables)
-        self.classifier.optimizer.apply_gradients(
-            zip(grads, self.classifier.trainable_variables)
-        )
-        self.c_loss.update_state(loss)
-        self.c_accuracy.update_state(real_labels, preds)
-        return_metrics["c_loss"] = self.c_loss.result()
-        return_metrics["c_acc"] = self.c_accuracy.result()
-
         rvs = tf.random.normal(shape=(self.num_gens*self.batch_size, self.latent_dim))
         rvs = tf.split(rvs, self.num_gens, axis=0)
         with tf.GradientTape(persistent=True) as tape:
@@ -318,7 +303,7 @@ class WGCN_GP(models.Model):
             gen_d = tf.split(gen_d, self.num_gens, axis=0)
             gen_c = tf.split(gen_c, self.num_gens, axis=0)
 
-            gen_losses = tf.nest.map_structure(
+            gen_losses, ratios = tf.nest.map_structure(
                 lambda discs: self.g_loss_fn(discs, gen_c),
                 gen_d
             )
@@ -329,10 +314,13 @@ class WGCN_GP(models.Model):
                 zip(g_i_grad, self.generators[i].trainable_variables)
             )
             self.g_losses[i].update_state(gen_losses[i])
+            self.tvd_gp_ratio.update_state(ratios[i])
             return_metrics["g" + str(i) + "_loss"] = self.g_losses[i].result()
+
+        return_metrics["tvd_g_ratio"] = self.tvd_gp_ratio.result()
 
         return return_metrics
 
     @property
     def metrics(self):
-        return [self.d_loss, self.c_loss, self.c_accuracy] + self.g_losses
+        return [self.d_loss, self.tvd_gp_ratio] + self.g_losses
