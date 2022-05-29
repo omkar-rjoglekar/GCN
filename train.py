@@ -43,14 +43,12 @@ class Trainer:
 
         return tvd/ctr
 
-    def g_loss(self, disc, cls):
+    def g_loss(self, disc):
         d_loss = -tf.reduce_mean(disc)
-        c_loss = self.tvd_loss(cls)
-        c_loss = -self.c_loss_wt*c_loss
-        return d_loss + c_loss
+        return d_loss
 
     def train(self):
-        self.gcn.compile(self.d_opt, self.g_opts, self.d_loss, self.g_loss)
+        self.gcn.compile(self.d_opt, self.g_opts, self.d_loss, self.g_loss, self.tvd_loss)
 
         results = self.gcn.fit(self.real_dataset,
                                epochs=self.num_epochs,
