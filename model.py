@@ -201,7 +201,6 @@ class WGCN_GP(models.Model):
         super(WGCN_GP, self).__init__(name='wgcn_gp')
 
         self.d_loss = tf.keras.metrics.Mean(name="d_loss")
-        self.tvd_gp_ratio = tf.keras.metrics.Mean(name="tvd_gp_ratio")
         #self.c_loss = tf.keras.metrics.Mean(name="c_loss")
         #self.c_accuracy = tf.keras.metrics.CategoricalAccuracy(name="c_acc")
         self.g_losses = []
@@ -303,7 +302,7 @@ class WGCN_GP(models.Model):
             gen_d = tf.split(gen_d, self.num_gens, axis=0)
             gen_c = tf.split(gen_c, self.num_gens, axis=0)
 
-            gen_losses, ratios = tf.nest.map_structure(
+            gen_losses = tf.nest.map_structure(
                 lambda discs: self.g_loss_fn(discs, gen_c),
                 gen_d
             )
@@ -314,13 +313,10 @@ class WGCN_GP(models.Model):
                 zip(g_i_grad, self.generators[i].trainable_variables)
             )
             self.g_losses[i].update_state(gen_losses[i])
-            self.tvd_gp_ratio.update_state(ratios[i])
             return_metrics["g" + str(i) + "_loss"] = self.g_losses[i].result()
-
-        return_metrics["tvd_g_ratio"] = self.tvd_gp_ratio.result()
 
         return return_metrics
 
     @property
     def metrics(self):
-        return [self.d_loss, self.tvd_gp_ratio] + self.g_losses
+        return [self.d_loss] + self.g_losses

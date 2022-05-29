@@ -47,7 +47,7 @@ class Trainer:
         d_loss = -tf.reduce_mean(disc)
         c_loss = self.tvd_loss(cls)
         c_loss = -self.c_loss_wt*c_loss
-        return d_loss + c_loss, d_loss/c_loss
+        return d_loss + c_loss
 
     def train(self):
         self.gcn.compile(self.d_opt, self.g_opts, self.d_loss, self.g_loss)
