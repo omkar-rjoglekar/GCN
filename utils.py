@@ -47,6 +47,14 @@ class GCNCheckpointer(callbacks.Callback):
 
             print("Saved models!")
 
+class SuddenDeath(callbacks.Callback):
+    def __init__(self):
+        self.epoch_threshold = hps.ep_thres
+
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch > self.epoch_threshold:
+            print("stopping tvd loss")
+            self.model.calculate_tvd_loss = False
 
 def get_dataset(train=True):
     (train_images, train_labels), (test_images, test_labels) = load_data()

@@ -196,7 +196,7 @@ class Classifier(models.Model):
 
 
 class WGCN_GP(models.Model):
-    def __init__(self, from_ckpt=False):
+    def __init__(self, num_batches, from_ckpt=False):
 
         super(WGCN_GP, self).__init__(name='wgcn_gp')
 
@@ -232,6 +232,8 @@ class WGCN_GP(models.Model):
         self.batch_size = hps.batch_size
         self.num_classes = hps.num_classes
         self.c_loss_wt = hps.c_loss_weight
+        #self.c_wt_decay = (self.c_loss_wt - hps.min_c_wt) / (hps.epochs * num_batches)
+        self.calculate_tvd_loss = True
 
     def compile(self, d_optimizer, g_optimizers, d_loss_fn, g_loss_fn, tvd_loss_fn):
         super(WGCN_GP, self).compile()
@@ -255,6 +257,9 @@ class WGCN_GP(models.Model):
         gp = tf.reduce_mean((norm - 1.0) ** 2)
 
         return gp
+
+    """def update_c_wt(self):
+        self.c_loss_wt = self.c_loss_wt - self.c_wt_decay"""
 
     def train_step(self, real_data):
         real_images = real_data[0]
@@ -313,21 +318,28 @@ class WGCN_GP(models.Model):
             self.g_loss.update_state(tf.reduce_mean(gen_losses))
             return_metrics["g_loss"] = self.g_loss.result()
 
-            tvd_loss = self.tvd_loss_fn(gen_c)
-            self.t_loss.update_state(tvd_loss)
-            return_metrics["t_loss"] = self.t_loss.result()
+            if self.calculate_tvd_loss:
+                tvd_loss = self.tvd_loss_fn(gen_c)
+                self.t_loss.update_state(tvd_loss)
+                return_metrics["t_loss"] = self.t_loss.result()
 
-            tvd_loss = self.c_loss_wt * (1.0 - tvd_loss)
-            gen_losses_c = tf.nest.map_structure(
-                lambda g_loss: g_loss + tvd_loss,
-                gen_losses
-            )
+                tvd_loss = self.c_loss_wt * (1.0 - tvd_loss)
+                gen_losses_c = tf.nest.map_structure(
+                    lambda g_loss: g_loss + tvd_loss,
+                    gen_losses
+                )
+
+            else:
+                return_metrics["t_loss"] = self.t_loss.result()
+                gen_losses_c = gen_losses
 
         for i in range(self.num_gens):
             g_i_grad = tape.gradient(gen_losses_c[i], self.generators[i].trainable_variables)
             self.g_opts[i].apply_gradients(
                 zip(g_i_grad, self.generators[i].trainable_variables)
             )
+
+        #self.update_c_wt()
 
         return return_metrics
 

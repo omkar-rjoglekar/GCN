@@ -18,11 +18,12 @@ class Trainer:
         self.gcn_monitor_cbk = utils.GCNMonitor()
         self.checkpointer_cbk = utils.GCNCheckpointer()
         self.tensorboard_cbk = tf.keras.callbacks.TensorBoard(hps.logdir)
+        self.sd_cbk = utils.SuddenDeath()
 
         self.num_epochs = hps.epochs
-        self.c_loss_wt = hps.c_loss_weight
+        self.num_batches = len(self.real_dataset)
 
-        self.gcn = model.WGCN_GP(from_checkpoint)
+        self.gcn = model.WGCN_GP(self.num_batches, from_checkpoint)
 
     def d_loss(self, real_img, fake_img):
         real_loss = tf.reduce_mean(real_img)
@@ -54,7 +55,8 @@ class Trainer:
                                epochs=self.num_epochs,
                                callbacks=[self.gcn_monitor_cbk,
                                           self.tensorboard_cbk,
-                                          self.checkpointer_cbk],
+                                          self.checkpointer_cbk,
+                                          self.sd_cbk],
                                verbose=1)
 
         self.gcn.discriminator.save_weights(hps.savedir + "discriminator" + ".h5")
