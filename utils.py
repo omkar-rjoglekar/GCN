@@ -52,8 +52,10 @@ class SuddenDeath(callbacks.Callback):
         self.epoch_threshold = hps.ep_thres
 
     def on_epoch_end(self, epoch, logs=None):
-        if epoch > self.epoch_threshold:
-            print("stopping tvd loss")
+        if not self.model.calculate_tvd_loss:
+            pass
+        if epoch >= self.epoch_threshold:
+            print("\nStopping tvd loss")
             self.model.calculate_tvd_loss = False
 
 def get_dataset(train=True):

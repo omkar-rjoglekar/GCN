@@ -18,7 +18,12 @@ class Trainer:
         self.gcn_monitor_cbk = utils.GCNMonitor()
         self.checkpointer_cbk = utils.GCNCheckpointer()
         self.tensorboard_cbk = tf.keras.callbacks.TensorBoard(hps.logdir)
-        self.sd_cbk = utils.SuddenDeath()
+        self.early_stopping_cbk = tf.keras.callbacks.EarlyStopping(monitor='net_objective',
+                                                                   min_delta=0.01,
+                                                                   patience=5,
+                                                                   mode='max',
+                                                                   restore_best_weights=True)
+        #self.sd_cbk = utils.SuddenDeath()
 
         self.num_epochs = hps.epochs
         self.num_batches = len(self.real_dataset)
@@ -56,7 +61,7 @@ class Trainer:
                                callbacks=[self.gcn_monitor_cbk,
                                           self.tensorboard_cbk,
                                           self.checkpointer_cbk,
-                                          self.sd_cbk],
+                                          self.early_stopping_cbk],
                                verbose=1)
 
         self.gcn.discriminator.save_weights(hps.savedir + "discriminator" + ".h5")

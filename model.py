@@ -205,7 +205,7 @@ class WGCN_GP(models.Model):
         #self.c_accuracy = tf.keras.metrics.CategoricalAccuracy(name="c_acc")
         #self.g_losses = []
         self.g_loss = tf.keras.metrics.Mean(name="g_loss")
-        self.t_loss = tf.keras.metrics.Mean(name="tvd_loss")
+        self.t_loss = tf.keras.metrics.Mean(name="t_loss")
 
         self.discriminator = Discriminator()
         if from_ckpt:
@@ -233,7 +233,7 @@ class WGCN_GP(models.Model):
         self.num_classes = hps.num_classes
         self.c_loss_wt = hps.c_loss_weight
         #self.c_wt_decay = (self.c_loss_wt - hps.min_c_wt) / (hps.epochs * num_batches)
-        self.calculate_tvd_loss = True
+        #self.calculate_tvd_loss = True
 
     def compile(self, d_optimizer, g_optimizers, d_loss_fn, g_loss_fn, tvd_loss_fn):
         super(WGCN_GP, self).compile()
@@ -298,6 +298,7 @@ class WGCN_GP(models.Model):
 
         rvs = tf.random.normal(shape=(self.num_gens*self.batch_size, self.latent_dim))
         rvs = tf.split(rvs, self.num_gens, axis=0)
+
         with tf.GradientTape(persistent=True) as tape:
             fake_images = tf.nest.map_structure(
                 lambda gen, rv: gen(rv, training=True),
@@ -318,20 +319,16 @@ class WGCN_GP(models.Model):
             self.g_loss.update_state(tf.reduce_mean(gen_losses))
             return_metrics["g_loss"] = self.g_loss.result()
 
-            if self.calculate_tvd_loss:
-                tvd_loss = self.tvd_loss_fn(gen_c)
-                self.t_loss.update_state(tvd_loss)
-                return_metrics["t_loss"] = self.t_loss.result()
+            tvd_loss = self.tvd_loss_fn(gen_c)
+            self.t_loss.update_state(tvd_loss)
+            return_metrics["t_loss"] = self.t_loss.result()
+            return_metrics["net_objective"] = return_metrics["t_loss"] + return_metrics["d_loss"]
 
-                tvd_loss = self.c_loss_wt * (1.0 - tvd_loss)
-                gen_losses_c = tf.nest.map_structure(
-                    lambda g_loss: g_loss + tvd_loss,
-                    gen_losses
-                )
-
-            else:
-                return_metrics["t_loss"] = self.t_loss.result()
-                gen_losses_c = gen_losses
+            tvd_loss = self.c_loss_wt * (1.0 - tvd_loss)
+            gen_losses_c = tf.nest.map_structure(
+                lambda g_loss: g_loss + tvd_loss,
+                gen_losses
+            )
 
         for i in range(self.num_gens):
             g_i_grad = tape.gradient(gen_losses_c[i], self.generators[i].trainable_variables)

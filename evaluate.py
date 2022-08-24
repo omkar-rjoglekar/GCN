@@ -71,6 +71,7 @@ def average_class_probs(g_models, c_model):
 def get_fid(gen_lst):
     (_, _), (real_imgs, labels) = tf.keras.datasets.mnist.load_data()
     real_imgs = (real_imgs - 127.5) / 127.5
+    real_imgs = real_imgs
     real_imgs = tf.expand_dims(real_imgs, -1)
     real_imgs = tf.cast(real_imgs, tf.float32)
 
@@ -102,7 +103,9 @@ if __name__ == "__main__":
         gen.load_weights(hps.savedir + "gen{}".format(i) + ".h5")
         generators.append(gen)
 
-    dist = evaluate(classifier, generators)
+    if hps.num_gens != 1:
+        dist = evaluate(classifier, generators)
+
     save_im(generators)
 
     generators = []
@@ -114,8 +117,9 @@ if __name__ == "__main__":
 
     FID = get_fid(generators)
 
-    print("Generator mean FID = {}".format(FID))
-    print("Generators' image distance = {}".format(dist) + " (TVD)")
+    print("Generator mean FID(num_gens={}) = {}".format(hps.num_gens, FID))
+    if hps.num_gens != 1:
+        print("Generators' image distance(num_gens={}) = {}".format(hps.num_gens, dist) + " (TVD)")
 
     c = average_class_probs(generators, classifier)
     for i in range(hps.num_gens):
