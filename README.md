@@ -1,2 +1,0 @@
-# GCN
-Generative Collaborative Network
