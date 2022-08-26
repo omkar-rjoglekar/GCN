@@ -13,9 +13,6 @@ Generators' image distance(c_wt=11) = 0.9959768056869507 (TVD)
 Generator mean FID(c_wt=12) = 3.4164412021636963
 Generators' image distance(c_wt=12) = 0.9995321035385132 (TVD)
 
-Generator mean FID(c_wt=13) = 6.09774112701416
-Generators' image distance(c_wt=13) = 0.9963977932929993 (TVD)
-
 Generator mean FID(c_wt=14) = 4.133166313171387
 Generators' image distance(c_wt=14) = 0.9999256134033203 (TVD)
 
